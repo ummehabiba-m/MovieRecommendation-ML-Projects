@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.Python
+venv/
+env/
+ENV/
+
+# Data files
+data/raw/ml-100k/*
+data/processed/*.parquet
+*.csv
+*.dat
+
+# Model files (optional - you can commit the best model)
+# models/*.pkl
+# models/*.joblib
+
+# Logs
+logs/
+*.log
+*.html
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Temporary files
+*.tmp
+*.bak

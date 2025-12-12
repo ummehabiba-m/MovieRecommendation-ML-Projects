@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+  # FastAPI Application
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: movielens-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    depends_on:
+      - mlflow
+    networks:
+      - ml-network
+    restart: unless-stopped
+
+  # MLflow Tracking Server
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.7.1
+    container_name: movielens-mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns:/mlflow/mlruns
+      - ./mlartifacts:/mlflow/mlartifacts
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:///mlflow/mlruns.db
+      --default-artifact-root /mlflow/mlartifacts
+      --host 0.0.0.0
+      --port 5000
+    networks:
+      - ml-network
+    restart: unless-stopped
+
+  # Prefect Server
+  prefect-server:
+    image: prefecthq/prefect:2.13.0-python3.10
+    container_name: movielens-prefect
+    ports:
+      - "4200:4200"
+    environment:
+      - PREFECT_SERVER_API_HOST=0.0.0.0
+      - PREFECT_API_URL=http://prefect-server:4200/api
+    command: prefect server start --host 0.0.0.0
+    volumes:
+      - prefect-data:/root/.prefect
+    networks:
+      - ml-network
+    restart: unless-stopped
+
+  # Prefect Agent
+  prefect-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: movielens-prefect-agent
+    environment:
+      - PREFECT_API_URL=http://prefect-server:4200/api
+    command: prefect agent start --pool default-agent-pool
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./models:/app/models
+    depends_on:
+      - prefect-server
+    networks:
+      - ml-network
+    restart: unless-stopped
+
+  # PostgreSQL (Optional - for production)
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: movielens-postgres
+  #   environment:
+  #     - POSTGRES_USER=mlops
+  #     - POSTGRES_PASSWORD=mlops123
+  #     - POSTGRES_DB=movielens
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   networks:
+  #     - ml-network
+  #   restart: unless-stopped
+
+networks:
+  ml-network:
+    driver: bridge
+
+volumes:
+  prefect-data:
+  # postgres-data:
