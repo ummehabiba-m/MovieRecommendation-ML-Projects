@@ -1,3 +1,9 @@
+"""
+Prefect Orchestration Pipeline for MovieLens ML Training
+"""
+
+from prefect import flow, task
+from prefect.task_runners import SequentialTaskRunner
 import pandas as pd
 import numpy as np
 from loguru import logger
@@ -8,14 +14,27 @@ import sys
 # Add src to path
 sys.path.append(str(Path(__file__).parent))
 
-from data_loader import MovieLensDataLoader
-from feature_engineering import FeatureEngineer
-from model_training import ModelTrainer, ModelEvaluator
-import config.config as config
+import sys
+from pathlib import Path
 
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
+# Now imports will work
+from src.data_loader import MovieLensDataLoader
+from src.feature_engineering import FeatureEngineer  
+from src.model_training import ModelTrainer
+from config import config
+
+@task(
+    name="download_data",
+    description="Download and load MovieLens data",
+    retries=2,
+    retry_delay_seconds=10
+)
 def download_data_task() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Task: Download and load raw data"""
+    """Task: Download and load raw data with retry logic"""
     try:
         logger.info("Starting data download task...")
         loader = MovieLensDataLoader()
@@ -29,12 +48,17 @@ def download_data_task() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         raise
 
 
+@task(
+    name="engineer_features",
+    description="Create features from raw data",
+    retries=1
+)
 def engineer_features_task(
     ratings: pd.DataFrame,
     movies: pd.DataFrame,
     users: pd.DataFrame
 ) -> pd.DataFrame:
-    """Task: Feature engineering"""
+    """Task: Feature engineering with error handling"""
     try:
         logger.info("Starting feature engineering task...")
         engineer = FeatureEngineer()
@@ -48,17 +72,20 @@ def engineer_features_task(
         raise
 
 
-def save_to_feature_store_task(features_df: pd.DataFrame) -> bool:
-    """Task: Save features locally"""
+@task(
+    name="save_features",
+    description="Save features locally"
+)
+def save_features_task(features_df: pd.DataFrame) -> bool:
+    """Task: Save features to storage"""
     try:
         logger.info("Saving features locally...")
         
-        # Save locally
         local_path = config.DATA_DIR / "processed" / "features.parquet"
         local_path.parent.mkdir(parents=True, exist_ok=True)
         features_df.to_parquet(local_path)
         
-        logger.info(f"✓ Features saved locally to {local_path}")
+        logger.info(f"✓ Features saved to {local_path}")
         return True
         
     except Exception as e:
@@ -66,24 +93,23 @@ def save_to_feature_store_task(features_df: pd.DataFrame) -> bool:
         raise
 
 
+@task(
+    name="prepare_training_data",
+    description="Prepare train-test split"
+)
 def prepare_training_data_task(
     features_df: pd.DataFrame
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
-    """Task: Prepare train-test split"""
+    """Task: Prepare training and test sets"""
     try:
         logger.info("Preparing training data...")
         
-        # Get feature columns
         engineer = FeatureEngineer()
         feature_cols = engineer.get_feature_columns()
         
-        # Ensure all feature columns exist
-        missing_cols = [col for col in feature_cols if col not in features_df.columns]
-        if missing_cols:
-            logger.warning(f"Missing columns: {missing_cols}")
-            feature_cols = [col for col in feature_cols if col in features_df.columns]
+        # Filter existing columns
+        feature_cols = [col for col in feature_cols if col in features_df.columns]
         
-        # Prepare features and target
         X = features_df[feature_cols].copy()
         y = features_df['rating'].copy()
         
@@ -105,20 +131,23 @@ def prepare_training_data_task(
         raise
 
 
+@task(
+    name="train_models",
+    description="Train and evaluate all models"
+)
 def train_models_task(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     X_test: pd.DataFrame,
     y_test: pd.Series
 ) -> Dict[str, Any]:
-    """Task: Train and evaluate models"""
+    """Task: Train all models and select best"""
     try:
         logger.info("Starting model training task...")
         
         trainer = ModelTrainer()
         results = trainer.train_all_models(X_train, y_train, X_test, y_test)
         
-        # Save best model
         model_path = trainer.save_best_model()
         
         logger.info(f"✓ Models trained. Best model saved to {model_path}")
@@ -135,11 +164,16 @@ def train_models_task(
         raise
 
 
+@flow(
+    name="movielens-training-pipeline",
+    description="Complete ML training pipeline with Prefect orchestration",
+    task_runner=SequentialTaskRunner()
+)
 def training_pipeline():
-    """Main training pipeline"""
+    """Main Prefect flow for ML training pipeline"""
     try:
         logger.info("=" * 80)
-        logger.info("🚀 Starting MovieLens ML Training Pipeline")
+        logger.info("🚀 Starting MovieLens ML Training Pipeline (Prefect)")
         logger.info("=" * 80)
         
         # Step 1: Download data
@@ -149,7 +183,9 @@ def training_pipeline():
         features_df = engineer_features_task(ratings, movies, users)
         
         # Step 3: Save features
-        save_to_feature_store_task(features_df)
+        save_features_task(features_df)
+        # Step 3.5: Run additional ML tasks
+        ml_results = ml_tasks_task(features_df)
         
         # Step 4: Prepare training data
         X_train, X_test, y_train, y_test = prepare_training_data_task(features_df)
@@ -170,8 +206,25 @@ def training_pipeline():
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")
         raise
+@task(name="run_ml_tasks", description="Execute additional ML tasks")
+def ml_tasks_task(features_df: pd.DataFrame) -> Dict[str, Any]:
+    """Task: Run classification, clustering, PCA, """
+    try:
+        logger.info("Running additional ML tasks...")
+        
+        from ml_tasks import MLTasksManager
+        
+        manager = MLTasksManager(features_df)
+        results = manager.run_all_tasks()
+        
+        logger.info("✓ All ML tasks completed")
+        return results
+        
+    except Exception as e:
+        logger.error(f"✗ ML tasks failed: {e}")
+        raise
 
 
 if __name__ == "__main__":
-    # Run the training pipeline
+    # Run the Prefect flow
     training_pipeline()

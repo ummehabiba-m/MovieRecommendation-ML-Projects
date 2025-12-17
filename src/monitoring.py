@@ -1,310 +1,274 @@
+"""
+Simplified Monitoring Module - Without Evidently Dependencies
+"""
 import pandas as pd
 import numpy as np
-from evidently import ColumnMapping
-from evidently.report import Report
-from evidently.metric_preset import DataDriftPreset, TargetDriftPreset, DataQualityPreset
-from evidently.test_suite import TestSuite
-from evidently.tests import (
-    TestNumberOfColumnsWithMissingValues,
-    TestNumberOfRowsWithMissingValues,
-    TestNumberOfConstantColumns,
-    TestNumberOfDuplicatedRows,
-    TestNumberOfDuplicatedColumns,
-    TestColumnsType,
-    TestNumberOfDriftedColumns
-)
-from loguru import logger
 from pathlib import Path
-from typing import Dict, Any
-import config.config as config
 import json
 from datetime import datetime
+from loguru import logger
+from scipy import stats
 
 
 class DataDriftMonitor:
-    """Monitor data drift using Evidently"""
+    """Monitor for data drift detection using statistical tests"""
     
-    def __init__(self, reference_data: pd.DataFrame, current_data: pd.DataFrame):
-        self.reference_data = reference_data
-        self.current_data = current_data
-        self.column_mapping = None
-        
-    def setup_column_mapping(self, target_col: str = 'rating', numerical_features: list = None):
-        """Setup column mapping for Evidently"""
-        if numerical_features is None:
-            numerical_features = [
-                'user_avg_rating', 'user_rating_std', 'user_rating_count',
-                'item_avg_rating', 'item_rating_std', 'item_rating_count',
-                'age', 'year', 'month', 'day', 'hour'
-            ]
-        
-        self.column_mapping = ColumnMapping(
-            target=target_col,
-            numerical_features=numerical_features,
-            categorical_features=['gender_encoded', 'occupation_encoded']
-        )
+    def __init__(self, drift_threshold: float = 0.05):
+        self.drift_threshold = drift_threshold
+        self.reference_data = None
+        self.feature_stats = {}
     
-    def generate_data_drift_report(self, save_path: Path = None) -> Report:
-        """Generate comprehensive data drift report"""
-        logger.info("Generating data drift report...")
-        
-        if self.column_mapping is None:
-            self.setup_column_mapping()
-        
-        # Create report
-        report = Report(metrics=[
-            DataDriftPreset(),
-            TargetDriftPreset(),
-            DataQualityPreset()
-        ])
-        
-        # Run report
-        report.run(
-            reference_data=self.reference_data,
-            current_data=self.current_data,
-            column_mapping=self.column_mapping
-        )
-        
-        # Save report
-        if save_path is None:
-            save_path = config.LOGS_DIR / f"data_drift_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-        
-        report.save_html(str(save_path))
-        logger.info(f"Data drift report saved to: {save_path}")
-        
-        return report
+    def set_reference_data(self, data: pd.DataFrame):
+        """Set reference dataset for drift comparison"""
+        self.reference_data = data
+        self._calculate_reference_stats()
+        logger.info(f"Reference data set: {len(data)} samples")
     
-    def run_data_tests(self) -> TestSuite:
-        """Run automated data quality tests"""
-        logger.info("Running data quality tests...")
+    def _calculate_reference_stats(self):
+        """Calculate statistics for reference data"""
+        if self.reference_data is None:
+            return
         
-        tests = TestSuite(tests=[
-            TestNumberOfColumnsWithMissingValues(),
-            TestNumberOfRowsWithMissingValues(),
-            TestNumberOfConstantColumns(),
-            TestNumberOfDuplicatedRows(),
-            TestNumberOfDuplicatedColumns(),
-            TestColumnsType(),
-            TestNumberOfDriftedColumns()
-        ])
+        numeric_cols = self.reference_data.select_dtypes(include=[np.number]).columns
         
-        tests.run(
-            reference_data=self.reference_data,
-            current_data=self.current_data,
-            column_mapping=self.column_mapping
-        )
-        
-        # Save results
-        test_path = config.LOGS_DIR / f"data_tests_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-        tests.save_html(str(test_path))
-        logger.info(f"Data tests saved to: {test_path}")
-        
-        return tests
+        for col in numeric_cols:
+            self.feature_stats[col] = {
+                'mean': self.reference_data[col].mean(),
+                'std': self.reference_data[col].std(),
+                'min': self.reference_data[col].min(),
+                'max': self.reference_data[col].max(),
+                'median': self.reference_data[col].median()
+            }
     
-    def check_drift_threshold(self, threshold: float = config.DATA_DRIFT_THRESHOLD) -> Dict[str, Any]:
-        """Check if drift exceeds threshold"""
-        report = self.generate_data_drift_report()
+    def detect_drift(self, current_data: pd.DataFrame) -> dict:
+        """
+        Detect drift using Kolmogorov-Smirnov test
         
-        # Extract drift metrics
-        drift_metrics = report.as_dict()
+        Returns:
+            dict: Drift report with results for each feature
+        """
+        if self.reference_data is None:
+            logger.warning("No reference data set. Cannot detect drift.")
+            return {}
         
-        # Check number of drifted features
-        drifted_features = []
-        
-        # Parse report for drifted columns
-        try:
-            for metric in drift_metrics.get('metrics', []):
-                if metric.get('metric') == 'DataDriftTable':
-                    result = metric.get('result', {})
-                    drift_by_columns = result.get('drift_by_columns', {})
-                    
-                    for col, drift_info in drift_by_columns.items():
-                        if drift_info.get('drift_detected', False):
-                            drifted_features.append({
-                                'feature': col,
-                                'drift_score': drift_info.get('drift_score', 0)
-                            })
-        except Exception as e:
-            logger.warning(f"Could not parse drift metrics: {e}")
-        
-        total_features = len(self.reference_data.columns)
-        drift_ratio = len(drifted_features) / total_features if total_features > 0 else 0
-        
-        alert = drift_ratio > threshold
-        
-        result = {
-            'drift_detected': alert,
-            'drift_ratio': drift_ratio,
-            'threshold': threshold,
-            'drifted_features': drifted_features,
-            'total_features': total_features,
-            'timestamp': datetime.now().isoformat()
+        drift_report = {
+            'timestamp': datetime.now().isoformat(),
+            'n_features_tested': 0,
+            'n_features_drifted': 0,
+            'drift_detected': False,
+            'features': {}
         }
         
-        if alert:
-            logger.warning(f"⚠️ Data drift detected! {len(drifted_features)} features drifted ({drift_ratio:.2%})")
-        else:
-            logger.info(f"✓ No significant data drift detected ({drift_ratio:.2%})")
+        numeric_cols = self.reference_data.select_dtypes(include=[np.number]).columns
+        common_cols = [col for col in numeric_cols if col in current_data.columns]
         
-        return result
+        for col in common_cols:
+            # Kolmogorov-Smirnov test
+            statistic, p_value = stats.ks_2samp(
+                self.reference_data[col].dropna(),
+                current_data[col].dropna()
+            )
+            
+            drift_detected = p_value < self.drift_threshold
+            
+            drift_report['features'][col] = {
+                'statistic': float(statistic),
+                'p_value': float(p_value),
+                'drift_detected': bool(drift_detected),
+                'current_mean': float(current_data[col].mean()),
+                'reference_mean': float(self.reference_data[col].mean())
+            }
+            
+            drift_report['n_features_tested'] += 1
+            if drift_detected:
+                drift_report['n_features_drifted'] += 1
+        
+        # Overall drift if > 50% of features drifted
+        if drift_report['n_features_tested'] > 0:
+            drift_ratio = drift_report['n_features_drifted'] / drift_report['n_features_tested']
+            drift_report['drift_detected'] = bool(drift_ratio > 0.5)
+            drift_report['drift_ratio'] = float(drift_ratio)
+        
+        logger.info(f"Drift detection: {drift_report['n_features_drifted']}/{drift_report['n_features_tested']} features drifted")
+        
+        return drift_report
+    
+    def save_report(self, report: dict, output_path: Path):
+        """Save drift report to JSON"""
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Convert NumPy types to native Python types
+        def convert_numpy_types(obj):
+            if isinstance(obj, (np.bool_, np.bool8)):
+                return bool(obj)
+            elif isinstance(obj, (np.integer, np.int_, np.intc, np.intp, np.int8,
+                                  np.int16, np.int32, np.int64)):
+                return int(obj)
+            elif isinstance(obj, (np.floating, np.float_, np.float16, np.float32, np.float64)):
+                return float(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif isinstance(obj, dict):
+                return {key: convert_numpy_types(value) for key, value in obj.items()}
+            elif isinstance(obj, (list, tuple)):
+                return [convert_numpy_types(item) for item in obj]
+            else:
+                return obj
+        
+        # Convert report before saving
+        report_converted = convert_numpy_types(report)
+        
+        with open(output_path, 'w') as f:
+            json.dump(report_converted, f, indent=2)
+        
+        logger.info(f"Drift report saved to {output_path}")
 
 
 class ModelPerformanceMonitor:
     """Monitor model performance over time"""
     
-    def __init__(self, model, model_name: str = "production_model"):
-        self.model = model
+    def __init__(self, model_name: str):
         self.model_name = model_name
         self.performance_history = []
+    
+    def log_performance(self, metrics: dict, timestamp: str = None):
+        """Log performance metrics"""
+        if timestamp is None:
+            timestamp = datetime.now().isoformat()
         
-    def evaluate_performance(
-        self,
-        X: pd.DataFrame,
-        y: pd.Series,
-        dataset_name: str = "current"
-    ) -> Dict[str, float]:
-        """Evaluate current model performance"""
-        from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-        
-        # Make predictions
-        y_pred = self.model.predict(X)
-        
-        # Calculate metrics
-        metrics = {
-            'rmse': np.sqrt(mean_squared_error(y, y_pred)),
-            'mae': mean_absolute_error(y, y_pred),
-            'r2': r2_score(y, y_pred),
-            'dataset': dataset_name,
-            'timestamp': datetime.now().isoformat(),
-            'n_samples': len(y)
+        record = {
+            'timestamp': timestamp,
+            'model': self.model_name,
+            **metrics
         }
         
-        logger.info(f"Performance on {dataset_name}: RMSE={metrics['rmse']:.4f}, MAE={metrics['mae']:.4f}, R²={metrics['r2']:.4f}")
-        
-        # Add to history
-        self.performance_history.append(metrics)
-        
-        return metrics
+        self.performance_history.append(record)
+        logger.info(f"Performance logged: {metrics}")
     
-    def check_performance_degradation(
-        self,
-        current_metrics: Dict[str, float],
-        baseline_metrics: Dict[str, float],
-        threshold: float = config.PERFORMANCE_THRESHOLD
-    ) -> Dict[str, Any]:
-        """Check if performance has degraded significantly"""
-        
-        rmse_increase = (current_metrics['rmse'] - baseline_metrics['rmse']) / baseline_metrics['rmse']
-        mae_increase = (current_metrics['mae'] - baseline_metrics['mae']) / baseline_metrics['mae']
-        r2_decrease = (baseline_metrics['r2'] - current_metrics['r2']) / abs(baseline_metrics['r2'])
-        
-        degraded = (
-            rmse_increase > threshold or
-            mae_increase > threshold or
-            r2_decrease > threshold
-        )
-        
-        result = {
-            'performance_degraded': degraded,
-            'rmse_increase': rmse_increase,
-            'mae_increase': mae_increase,
-            'r2_decrease': r2_decrease,
-            'threshold': threshold,
-            'current_metrics': current_metrics,
-            'baseline_metrics': baseline_metrics
-        }
-        
-        if degraded:
-            logger.warning(f"⚠️ Model performance degradation detected!")
-            logger.warning(f"  RMSE increase: {rmse_increase:.2%}")
-            logger.warning(f"  MAE increase: {mae_increase:.2%}")
-            logger.warning(f"  R² decrease: {r2_decrease:.2%}")
-        else:
-            logger.info("✓ Model performance is stable")
-        
-        return result
+    def get_performance_trend(self, metric: str = 'rmse') -> list:
+        """Get performance trend for a specific metric"""
+        return [record[metric] for record in self.performance_history if metric in record]
     
-    def save_performance_history(self, filepath: Path = None):
-        """Save performance history to file"""
-        if filepath is None:
-            filepath = config.LOGS_DIR / f"performance_history_{self.model_name}.json"
+    def save_history(self, output_path: Path):
+        """Save performance history to JSON"""
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         
-        with open(filepath, 'w') as f:
+        with open(output_path, 'w') as f:
             json.dump(self.performance_history, f, indent=2)
         
-        logger.info(f"Performance history saved to: {filepath}")
+        logger.info(f"Performance history saved to {output_path}")
+    
+    def load_history(self, input_path: Path):
+        """Load performance history from JSON"""
+        if not input_path.exists():
+            logger.warning(f"History file not found: {input_path}")
+            return
+        
+        with open(input_path, 'r') as f:
+            self.performance_history = json.load(f)
+        
+        logger.info(f"Loaded {len(self.performance_history)} performance records")
 
 
 class AlertManager:
-    """Manage alerts for drift and performance issues"""
+    """Manage alerts for monitoring events"""
     
     def __init__(self):
         self.alerts = []
     
-    def create_alert(
-        self,
-        alert_type: str,
-        severity: str,
-        message: str,
-        metadata: Dict[str, Any] = None
-    ):
-        """Create an alert"""
+    def create_alert(self, level: str, message: str, details: dict = None):
+        """
+        Create an alert
+        
+        Args:
+            level: 'INFO', 'WARNING', or 'CRITICAL'
+            message: Alert message
+            details: Additional details
+        """
         alert = {
-            'type': alert_type,
-            'severity': severity,
+            'timestamp': datetime.now().isoformat(),
+            'level': level,
             'message': message,
-            'metadata': metadata or {},
-            'timestamp': datetime.now().isoformat()
+            'details': details or {}
         }
         
         self.alerts.append(alert)
-        logger.warning(f"[{severity.upper()}] {alert_type}: {message}")
         
-        # Send notification
-        self.send_notification(alert)
+        # Log based on level
+        if level == 'CRITICAL':
+            logger.critical(message)
+        elif level == 'WARNING':
+            logger.warning(message)
+        else:
+            logger.info(message)
     
-    def send_notification(self, alert: Dict[str, Any]):
-        """Send notification via configured channels"""
-        # Discord notification
-        if config.DISCORD_WEBHOOK_URL and config.DISCORD_WEBHOOK_URL != "your_discord_webhook_url":
-            try:
-                import requests
-                
-                color = {
-                    'critical': 0xFF0000,  # Red
-                    'warning': 0xFFA500,   # Orange
-                    'info': 0x00FF00        # Green
-                }.get(alert['severity'], 0x808080)
-                
-                embed = {
-                    "title": f"🚨 {alert['type']}",
-                    "description": alert['message'],
-                    "color": color,
-                    "fields": [
-                        {"name": "Severity", "value": alert['severity'].upper(), "inline": True},
-                        {"name": "Timestamp", "value": alert['timestamp'], "inline": True}
-                    ]
-                }
-                
-                requests.post(
-                    config.DISCORD_WEBHOOK_URL,
-                    json={"embeds": [embed]}
-                )
-                
-                logger.info("✓ Discord notification sent")
-            except Exception as e:
-                logger.error(f"Failed to send Discord notification: {e}")
+    def get_alerts(self, level: str = None) -> list:
+        """Get alerts, optionally filtered by level"""
+        if level is None:
+            return self.alerts
+        return [a for a in self.alerts if a['level'] == level]
     
-    def get_alerts(self, severity: str = None) -> list:
-        """Get alerts filtered by severity"""
-        if severity:
-            return [a for a in self.alerts if a['severity'] == severity]
-        return self.alerts
+    def clear_alerts(self):
+        """Clear all alerts"""
+        self.alerts = []
+        logger.info("All alerts cleared")
+
+
+def monitor_drift_demo():
+    """Demo function to show drift monitoring"""
+    from src.data_loader import MovieLensDataLoader
+    from src.feature_engineering import FeatureEngineer
+    
+    logger.info("📊 Starting Data Drift Monitoring Demo")
+    
+    # Load data
+    loader = MovieLensDataLoader()
+    ratings, movies, users = loader.load_all_data()
+    
+    # Engineer features
+    engineer = FeatureEngineer()
+    features = engineer.engineer_features(ratings, movies, users)
+    
+    # Select numeric features for drift detection
+    numeric_features = features.select_dtypes(include=[np.number]).columns[:14]
+    reference_features = features[numeric_features].iloc[:80000]
+    current_features = features[numeric_features].iloc[80000:]
+    
+    # Initialize monitor
+    monitor = DataDriftMonitor(drift_threshold=0.05)
+    monitor.set_reference_data(reference_features)
+    
+    # Detect drift
+    drift_report = monitor.detect_drift(current_features)
+    
+    # Print results
+    print("\n" + "="*60)
+    print("📊 DATA DRIFT DETECTION RESULTS")
+    print("="*60)
+    print(f"Features Tested: {drift_report['n_features_tested']}")
+    print(f"Features with Drift: {drift_report['n_features_drifted']}")
+    print(f"Drift Ratio: {drift_report.get('drift_ratio', 0):.2%}")
+    print(f"Overall Drift Detected: {'YES ⚠️' if drift_report['drift_detected'] else 'NO ✅'}")
+    print("\nFeature Details:")
+    print("-"*60)
+    
+    for feature, stats in drift_report['features'].items():
+        if stats['drift_detected']:
+            print(f"  {feature}: DRIFT ⚠️ (p={stats['p_value']:.4f})")
+        else:
+            print(f"  {feature}: OK ✅ (p={stats['p_value']:.4f})")
+    
+    # Save report
+    output_dir = Path("logs")
+    output_dir.mkdir(exist_ok=True)
+    report_path = output_dir / f"drift_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    monitor.save_report(drift_report, report_path)
+    
+    print(f"\n✅ Drift report saved to: {report_path}")
+    print("="*60)
+    
+    return drift_report
 
 
 if __name__ == "__main__":
-    logger.info("Monitoring module loaded successfully!")
-    print("\nAvailable monitors:")
-    print("  - DataDriftMonitor")
-    print("  - ModelPerformanceMonitor")
-    print("  - AlertManager")
+    monitor_drift_demo()

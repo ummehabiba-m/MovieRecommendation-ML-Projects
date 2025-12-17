@@ -5,7 +5,8 @@ import pandas as pd
 from pathlib import Path
 from loguru import logger
 from typing import Tuple
-import config.config as config
+from config import config
+
 
 
 class MovieLensDataLoader:

@@ -1,4 +1,6 @@
+# =========================
 # Python
+# =========================
 __pycache__/
 *.py[cod]
 *.so
@@ -7,53 +9,81 @@ __pycache__/
 dist/
 build/
 .Python
+
+# Virtual environments
 venv/
 env/
 ENV/
+evidently_env/
+mlflow_venv/
+prefect_venv/
 
+# =========================
 # Data files
+# =========================
 data/raw/ml-100k/*
 data/processed/*.parquet
 *.csv
 *.dat
 
-# Model files (optional - you can commit the best model)
+# =========================
+# Model artifacts
+# (Keep .pkl tracked if required for demo)
+# =========================
 # models/*.pkl
 # models/*.joblib
 
-# Logs
+# =========================
+# Logs & temporary files
+# =========================
 logs/
 *.log
 *.html
+*.tmp
+*.bak
 
+# =========================
 # MLflow
+# =========================
 mlruns/
 mlartifacts/
+mlflow.db
 
+# =========================
+# Streamlit
+# =========================
+.streamlit/
+
+# =========================
 # Environment variables
+# =========================
 .env
 
-# IDE
+# =========================
+# IDE & Editor files
+# =========================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
+# =========================
+# OS files
+# =========================
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# Testing
+# =========================
+# Testing & Coverage
+# =========================
 .pytest_cache/
 .coverage
 htmlcov/
 .tox/
 
+# =========================
 # Jupyter
+# =========================
 .ipynb_checkpoints/
-
-# Temporary files
-*.tmp
-*.bak

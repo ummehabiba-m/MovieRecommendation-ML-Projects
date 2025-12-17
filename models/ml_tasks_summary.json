@@ -1,0 +1,180 @@
+{
+  "classification": {
+    "accuracy": 0.62245,
+    "classes": [
+      "High",
+      "Low",
+      "Medium"
+    ],
+    "n_train": 80000,
+    "n_test": 20000,
+    "n_features": 9,
+    "train_distribution": {
+      "0": 44387,
+      "2": 21668,
+      "1": 13945
+    },
+    "test_distribution": {
+      "0": 10988,
+      "2": 5477,
+      "1": 3535
+    },
+    "top_features": [
+      [
+        "item_avg_rating",
+        0.4168532067731669
+      ],
+      [
+        "user_avg_rating",
+        0.32396886024885985
+      ],
+      [
+        "item_rating_count",
+        0.07719097310982581
+      ],
+      [
+        "user_rating_count",
+        0.05724988463355927
+      ],
+      [
+        "movie_year",
+        0.043990669725696506
+      ]
+    ],
+    "model_path": "models\\rating_classifier.pkl"
+  },
+  "clustering": {
+    "n_clusters": 5,
+    "silhouette_score": 0.24151562843438795,
+    "n_users": 943,
+    "cluster_sizes": [
+      222,
+      313,
+      102,
+      209,
+      97
+    ],
+    "cluster_statistics": {
+      "cluster_0": {
+        "size": 222,
+        "percentage": 23.54188759278897,
+        "mean_features": {
+          "user_avg_rating": 3.756405466164489,
+          "user_rating_count": 62.93693693693694,
+          "age": 49.666666666666664,
+          "user_rating_std": 0.9587864480375847,
+          "user_activity_days": 4.572072072072072
+        }
+      },
+      "cluster_1": {
+        "size": 313,
+        "percentage": 33.19194061505832,
+        "mean_features": {
+          "user_avg_rating": 3.798879013228861,
+          "user_rating_count": 76.38338658146965,
+          "age": 27.022364217252395,
+          "user_rating_std": 0.9084964624054135,
+          "user_activity_days": 6.616613418530352
+        }
+      },
+      "cluster_2": {
+        "size": 102,
+        "percentage": 10.816542948038176,
+        "mean_features": {
+          "user_avg_rating": 3.558807889203077,
+          "user_rating_count": 181.2549019607843,
+          "age": 32.450980392156865,
+          "user_rating_std": 1.0162851987577117,
+          "user_activity_days": 155.2549019607843
+        }
+      },
+      "cluster_3": {
+        "size": 209,
+        "percentage": 22.163308589607635,
+        "mean_features": {
+          "user_avg_rating": 3.18929273162843,
+          "user_rating_count": 64.04306220095694,
+          "age": 29.679425837320576,
+          "user_rating_std": 1.2528567328697684,
+          "user_activity_days": 4.244019138755981
+        }
+      },
+      "cluster_4": {
+        "size": 97,
+        "percentage": 10.286320254506894,
+        "mean_features": {
+          "user_avg_rating": 3.413736946773823,
+          "user_rating_count": 311.82474226804123,
+          "age": 32.103092783505154,
+          "user_rating_std": 1.0209407453398687,
+          "user_activity_days": 20.989690721649485
+        }
+      }
+    },
+    "features_used": [
+      "user_avg_rating",
+      "user_rating_count",
+      "age",
+      "user_rating_std",
+      "user_activity_days"
+    ],
+    "model_path": "models\\user_clustering.pkl"
+  },
+  "pca": {
+    "n_components": 10,
+    "original_dims": 14,
+    "explained_variance": [
+      0.15408165656835662,
+      0.09991959197642383,
+      0.09657148154018881,
+      0.08903363926987555,
+      0.07638328096241519,
+      0.0695121237611694,
+      0.06798556495046403,
+      0.06659757678102858,
+      0.05976896291032589,
+      0.05499742254562055
+    ],
+    "cumulative_variance": 0.8348513012658685,
+    "top_pc1_features": {
+      "item_avg_rating": 0.5174692586031062,
+      "item_rating_count": 0.4225519143387632,
+      "user_avg_rating": 0.3467444208509669,
+      "item_rating_std": 0.34247477249309377,
+      "item_age_days": 0.2846911889810803
+    },
+    "features_used": [
+      "user_avg_rating",
+      "user_rating_count",
+      "user_rating_std",
+      "age",
+      "item_avg_rating",
+      "item_rating_count",
+      "item_rating_std",
+      "movie_year",
+      "hour",
+      "day",
+      "month",
+      "dayofweek",
+      "user_activity_days",
+      "item_age_days"
+    ],
+    "model_path": "models\\pca_reducer.pkl"
+  },
+  "recommendation": {
+    "implemented": true,
+    "method": "hybrid_collaborative_filtering",
+    "n_users": 943,
+    "n_items": 1682,
+    "n_ratings": 100000,
+    "sparsity": 0.9369533063577546,
+    "features_used": [
+      "user_avg_rating",
+      "item_avg_rating",
+      "user_rating_count",
+      "item_rating_count",
+      "temporal_features",
+      "user_demographics"
+    ]
+  }
+}

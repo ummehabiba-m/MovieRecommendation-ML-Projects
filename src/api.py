@@ -1,3 +1,5 @@
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -7,9 +9,15 @@ import numpy as np
 import joblib
 from loguru import logger
 from pathlib import Path
-import config.config as config
+import sys
 from datetime import datetime
 import json
+
+# Fix import paths
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from config import config
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -26,7 +34,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+# Mount static files for frontend
+app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
 # Global model variable
 model = None
 feature_columns = None
@@ -182,9 +191,14 @@ async def startup_event():
     load_model()
 
 
-@app.get("/", response_model=dict)
+@app.get("/")
+async def serve_frontend():
+    """Serve the frontend HTML"""
+    return FileResponse("frontend/index.html")
+
+@app.get("/api", response_model=dict)
 async def root():
-    """Root endpoint"""
+    """API info endpoint"""
     return {
         "message": "MovieLens Rating Prediction API",
         "version": "1.0.0",
