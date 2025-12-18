@@ -9,7 +9,7 @@ Domain: **Entertainment & Media**
 This project implements a complete ML Engineering system for predicting movie ratings using the MovieLens 100K dataset. It demonstrates professional MLOps workflows including:
 
 - ✅ Time series feature engineering
-- ✅ Feature store integration (Hopsworks)
+- ✅ Feature store integration
 - ✅ Model registry (MLflow)
 - ✅ FastAPI deployment
 - ✅ Workflow orchestration (Prefect)
