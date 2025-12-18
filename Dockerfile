@@ -37,6 +37,7 @@ COPY config/ ./config/
 COPY src/ ./src/
 COPY models/ ./models/
 COPY data/ ./data/
+COPY frontend/ ./frontend/
 
 # Create necessary directories
 RUN mkdir -p logs data/raw data/processed models
