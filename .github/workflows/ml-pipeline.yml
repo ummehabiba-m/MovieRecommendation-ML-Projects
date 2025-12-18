@@ -77,7 +77,7 @@ jobs:
           python -m pytest tests/test_data_pipeline.py -v --tb=short --cov=src --cov-report=xml --cov-report=html
 
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v3
         with:
           file: ./coverage.xml
           flags: unittests
@@ -108,7 +108,7 @@ jobs:
           python -m pytest tests/test_ml_validation.py -v --tb=short
 
       - name: Upload test reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         if: always()
         with:
           name: ml-test-reports
@@ -175,7 +175,7 @@ jobs:
           python src/prefect_flows.py
 
       - name: Upload trained models
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: trained-models
           path: models/
