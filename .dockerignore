@@ -1,0 +1,8 @@
+# Ignore datasets
+data/raw/ml-100k/*
+data/processed/*.parquet
+*.csv
+*.dat
+
+# Keep placeholder
+!data/.gitkeep
