@@ -21,10 +21,10 @@ prefect_venv/
 # =========================
 # Data files
 # =========================
-data/raw/ml-100k/*
-data/processed/*.parquet
-*.csv
-*.dat
+#data/raw/ml-100k/*
+#data/processed/*.parquet
+#*.csv
+#*.dat
 
 # =========================
 # Model artifacts
