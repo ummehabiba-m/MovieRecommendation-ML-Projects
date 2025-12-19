@@ -36,8 +36,7 @@ RUN pip install --no-cache-dir --prefer-binary -r requirements-final.txt
 COPY config/ ./config/
 COPY src/ ./src/
 COPY models/ ./models/
-COPY data/ ./data/
-COPY frontend/ ./frontend/
+
 
 # Create necessary directories
 RUN mkdir -p logs data/raw data/processed models
